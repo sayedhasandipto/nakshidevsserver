@@ -34,7 +34,10 @@ app.use(async (req, res, next) => {
     }
 
     if (!cached.promise || mongoose.connection.readyState === 0) {
-        cached.promise = mongoose.connect(mongoURI).then((m) => m);
+        const opts = {
+            bufferCommands: false,
+        };
+        cached.promise = mongoose.connect(mongoURI, opts).then((m) => m);
     }
 
     try {
