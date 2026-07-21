@@ -15,6 +15,12 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+let cached = (global as any).mongoose;
+
+if (!cached) {
+    cached = (global as any).mongoose = { conn: null, promise: null };
+}
+
 // Database connection middleware for serverless environment
 app.use(async (req, res, next) => {
     const mongoURI = process.env.MONGODB_URI;
@@ -22,13 +28,21 @@ app.use(async (req, res, next) => {
         console.warn('MONGODB_URI is not defined in environment variables');
         return next();
     }
+    
+    if (cached.conn) {
+        return next();
+    }
+
+    if (!cached.promise) {
+        cached.promise = mongoose.connect(mongoURI).then((m) => m);
+    }
+
     try {
-        if (mongoose.connection.readyState !== 1) {
-            await mongoose.connect(mongoURI);
-            console.log('MongoDB connected successfully');
-        }
+        cached.conn = await cached.promise;
+        console.log('MongoDB connected successfully');
         next();
     } catch (err: any) {
+        cached.promise = null;
         console.error('MongoDB connection error:', err);
         res.status(500).json({ success: false, error: 'Database connection failed: ' + err.message });
     }
