@@ -29,11 +29,11 @@ app.use(async (req, res, next) => {
         return next();
     }
     
-    if (cached.conn) {
+    if (mongoose.connection.readyState === 1) {
         return next();
     }
 
-    if (!cached.promise) {
+    if (!cached.promise || mongoose.connection.readyState === 0) {
         cached.promise = mongoose.connect(mongoURI).then((m) => m);
     }
 
@@ -43,6 +43,7 @@ app.use(async (req, res, next) => {
         next();
     } catch (err: any) {
         cached.promise = null;
+        cached.conn = null;
         console.error('MongoDB connection error:', err);
         res.status(500).json({ success: false, error: 'Database connection failed: ' + err.message });
     }
