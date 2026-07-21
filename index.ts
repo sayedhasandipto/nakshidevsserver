@@ -26,16 +26,29 @@ app.use(async (req, res, next) => {
     const mongoURI = process.env.MONGODB_URI;
     if (!mongoURI) {
         console.warn('MONGODB_URI is not defined in environment variables');
-        return next();
-    }
-    
-    if (mongoose.connection.readyState === 1) {
-        return next();
+        return res.status(500).json({ success: false, error: 'MONGODB_URI is not configured' });
     }
 
-    if (!cached.promise || mongoose.connection.readyState === 0) {
+    // If connection appears ready, validate it with a ping
+    if (mongoose.connection.readyState === 1 && mongoose.connection.db) {
+        try {
+            await mongoose.connection.db.admin().ping();
+            return next();
+        } catch (pingErr) {
+            console.warn('Stale MongoDB connection detected, reconnecting...', pingErr);
+            cached.promise = null;
+            cached.conn = null;
+            try { await mongoose.disconnect(); } catch (_) {}
+        }
+    }
+
+    // Create new connection or reconnect
+    if (!cached.promise || mongoose.connection.readyState === 0 || mongoose.connection.readyState === 3) {
         const opts = {
             bufferCommands: false,
+            serverSelectionTimeoutMS: 5000,
+            connectTimeoutMS: 10000,
+            socketTimeoutMS: 45000,
         };
         cached.promise = mongoose.connect(mongoURI, opts).then((m) => m);
     }
