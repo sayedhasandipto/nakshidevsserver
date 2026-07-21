@@ -15,15 +15,24 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-// MongoDB Connection
-const mongoURI = process.env.MONGODB_URI;
-if (mongoURI) {
-    mongoose.connect(mongoURI)
-        .then(() => console.log('MongoDB connected successfully'))
-        .catch((err: Error) => console.error('MongoDB connection error:', err));
-} else {
-    console.warn('MONGODB_URI is not defined in environment variables');
-}
+// Database connection middleware for serverless environment
+app.use(async (req, res, next) => {
+    const mongoURI = process.env.MONGODB_URI;
+    if (!mongoURI) {
+        console.warn('MONGODB_URI is not defined in environment variables');
+        return next();
+    }
+    try {
+        if (mongoose.connection.readyState !== 1) {
+            await mongoose.connect(mongoURI);
+            console.log('MongoDB connected successfully');
+        }
+        next();
+    } catch (err: any) {
+        console.error('MongoDB connection error:', err);
+        res.status(500).json({ success: false, error: 'Database connection failed: ' + err.message });
+    }
+});
 
 // Routes
 app.use('/api/admin', adminRoutes);
