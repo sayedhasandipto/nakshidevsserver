@@ -9,9 +9,9 @@ router.get('/', async (req: Request, res: Response) => {
   try {
     const services = await Service.find({ status: 'Active' }).sort({ createdAt: -1 });
     res.json({ success: true, data: services });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching services:', error);
-    res.status(500).json({ success: false, error: 'Server error fetching services' });
+    res.status(500).json({ success: false, error: 'Server error fetching services: ' + error.message });
   }
 });
 
