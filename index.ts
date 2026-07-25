@@ -1,5 +1,5 @@
 import dotenv from "dotenv";
-import express, { Request, Response } from "express";
+import express, { Request, Response, NextFunction } from "express";
 import mongoose from "mongoose";
 import cors from "cors";
 import adminRoutes from "./routes/admin";
@@ -15,62 +15,55 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+// Global Mongoose Cache logic for Vercel Serverless
 let cached = (global as any).mongoose;
 
 if (!cached) {
   cached = (global as any).mongoose = { conn: null, promise: null };
 }
 
-// Database connection middleware for serverless environment
-app.use(async (req, res, next) => {
+async function connectDB() {
   const mongoURI = process.env.MONGODB_URI;
   if (!mongoURI) {
-    console.warn("MONGODB_URI is not defined in environment variables");
-    return res
-      .status(500)
-      .json({ success: false, error: "MONGODB_URI is not configured" });
+    throw new Error("MONGODB_URI is not defined in environment variables");
   }
 
-  // If connection appears ready, validate it with a ping
-  if (mongoose.connection.readyState === 1 && mongoose.connection.db) {
-    try {
-      await mongoose.connection.db.admin().ping();
-      return next();
-    } catch (pingErr) {
-      console.warn(
-        "Stale MongoDB connection detected, reconnecting...",
-        pingErr,
-      );
-      cached.promise = null;
-      cached.conn = null;
-      try {
-        await mongoose.disconnect();
-      } catch (_) {}
-    }
+  // ১. যদি আগে থেকেই একটিভ কানেকশন থাকে, সেটাই রিটার্ন করবে
+  if (cached.conn && mongoose.connection.readyState === 1) {
+    return cached.conn;
   }
 
-  // Create new connection or reconnect
-  if (
-    !cached.promise ||
-    mongoose.connection.readyState === 0 ||
-    mongoose.connection.readyState === 3
-  ) {
+  // ২. যদি কানেকশন প্রসেসিংয়ে না থাকে, তবে নতুন কানেকশন ইনিশিয়ালাইজ করবে
+  if (!cached.promise) {
     const opts = {
       bufferCommands: false,
       serverSelectionTimeoutMS: 5000,
       connectTimeoutMS: 10000,
       socketTimeoutMS: 45000,
     };
-    cached.promise = mongoose.connect(mongoURI, opts).then((m) => m);
+
+    cached.promise = mongoose.connect(mongoURI, opts).then((m) => {
+      return m;
+    });
   }
 
   try {
     cached.conn = await cached.promise;
-    console.log("MongoDB connected successfully");
-    next();
-  } catch (err: any) {
+  } catch (err) {
     cached.promise = null;
     cached.conn = null;
+    throw err;
+  }
+
+  return cached.conn;
+}
+
+// Database connection middleware
+app.use(async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err: any) {
     console.error("MongoDB connection error:", err);
     res.status(500).json({
       success: false,
@@ -88,12 +81,12 @@ app.get("/", (req: Request, res: Response) => {
   res.send("Welcome to GovService BD Backend API");
 });
 
-// For Vercel Serverless Functions, we need to export the Express app
-export default app;
-
-// Only start the server locally if not running on Vercel
+// For local development
 if (process.env.NODE_ENV !== "production") {
   app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
   });
 }
+
+// For Vercel Serverless Functions
+export default app;
