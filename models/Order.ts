@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document } from "mongoose";
 
 export interface IOrder extends Document {
+  orderId: string;
   customerName: string;
   customerEmail: string;
   serviceName: string;
@@ -10,6 +11,13 @@ export interface IOrder extends Document {
 }
 
 const OrderSchema: Schema = new Schema({
+  orderId: {
+    type: String,
+    required: true,
+    // অটোমেটিক ইউনিক আইডি তৈরি করবে (Timestamp + Random)
+    default: () =>
+      `ORD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+  },
   customerName: { type: String, required: true },
   customerEmail: { type: String, required: true },
   serviceName: { type: String, required: true },
